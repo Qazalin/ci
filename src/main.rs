@@ -1,4 +1,5 @@
 use clap::{command, Parser, Subcommand};
+use reqwest::header;
 use std::error::Error;
 
 #[derive(Subcommand, Debug)]
@@ -18,6 +19,8 @@ pub struct Cli {
 pub struct StartArgs {
     #[arg(short, help = "The workflow .yml file", long)]
     workflow_id: String,
+    #[arg(short, help = "Target branch", long)]
+    branch: String,
     #[arg(
         short,
         help = "Add a string parameter in key=value format",
@@ -41,18 +44,29 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let token = std::env::var("GH_TOKEN").unwrap();
     let repo = std::env::var("REPO").unwrap();
 
+    let mut headers = header::HeaderMap::new();
+    headers.insert(header::USER_AGENT, header::HeaderValue::from_static("test"));
+    headers.insert(
+        header::ACCEPT,
+        header::HeaderValue::from_static("application/vnd.github.v3+json"),
+    );
+    headers.insert(
+        header::AUTHORIZATION,
+        header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+    );
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .unwrap();
+
     match args.command {
         Command::Start(args) => {
-            let client = reqwest::Client::new();
-            let body = serde_json::json!({"ref": "process_replay_everytime"});
+            let body = serde_json::json!({"ref": args.branch});
             let res = client
                 .post(format!(
                     "https://api.github.com/repos/{repo}/actions/workflows/{}/dispatches",
                     args.workflow_id
                 ))
-                .header("User-Agent", "test")
-                .header("Accept", "application/vnd.github.v3+json")
-                .header("Authorization", format!("Bearer {}", token))
                 .json(&body)
                 .send()
                 .await?;
