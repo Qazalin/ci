@@ -113,7 +113,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 return Err(format!("couldn't create workflow {}", res.status()).into());
             }
         }
-        Command::Ls => todo!(),
+        Command::Ls => {
+            let res = client
+                .get(format!("{GH_BASE}/repos/{repo}/actions/runs?branch={}", b))
+                .send()
+                .await?;
+            let data: gh::ApiResponse = res.json().await?;
+            println!("{:?}", data);
+        }
         Command::Check(_) => {
             let res = client
                 .get(format!("{GH_BASE}/repos/{repo}/actions/runs?branch={}", b))
