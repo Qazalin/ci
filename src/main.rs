@@ -119,15 +119,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .send()
                 .await?;
             let data: gh::ApiResponse = res.json().await?;
-            println!("{:?}", data);
+            data.workflow_runs.iter().for_each(|wf| println!("{wf}"))
         }
         Command::Check(_) => {
             let res = client
-                .get(format!("{GH_BASE}/repos/{repo}/actions/runs?branch={}", b))
+                .get(format!(
+                    "{GH_BASE}/repos/{repo}/actions/runs?branch={}&per_page=1",
+                    b
+                ))
                 .send()
                 .await?;
             let data: gh::ApiResponse = res.json().await?;
-            println!("{:?}", data);
+            let run = &data.workflow_runs[0];
+            match run.status {
+                gh::Status::Queued => {}
+                _ => println!("{run}"),
+            }
         }
     }
 
