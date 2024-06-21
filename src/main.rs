@@ -16,12 +16,12 @@ pub struct Cli {
     command: Command,
     #[arg(short, help = "Target branch", long)]
     branch: Option<String>,
+    #[arg(short, help = "The workflow .yml file", long)]
+    workflow_id: Option<String>,
 }
 
 #[derive(Parser, Debug)]
 pub struct StartArgs {
-    #[arg(short, help = "The workflow .yml file", long)]
-    workflow_id: String,
     #[arg(
         short,
         help = "Add a string parameter in key=value format",
@@ -91,12 +91,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .map_err(|e| e.to_string())?;
     let curr_branch = std::str::from_utf8(&output.stdout)?.trim().to_string();
     let b = args.branch.unwrap_or(curr_branch);
+    let workflow_id = args.workflow_id.unwrap_or("test.yml".to_string());
     match args.command {
-        Command::Start(args) => {
+        Command::Start(_) => {
             let res = client
                 .post(format!(
                     "{GH_BASE}/repos/{}/actions/workflows/{}/dispatches",
-                    repo, args.workflow_id
+                    repo, workflow_id
                 ))
                 .json(&serde_json::json!({"ref": b}))
                 .send()
@@ -133,7 +134,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .send()
                 .await?;
             let data: gh::ApiResponse = res.json().await?;
-            data.workflow_runs.iter().for_each(|wf| println!("{wf}"))
+            data.workflow_runs
+                .iter()
+                .filter(|wf| wf.path.ends_with(&workflow_id))
+                .for_each(|wf| println!("{wf}"));
         }
         Command::Clean => {
             let res = client

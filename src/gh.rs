@@ -56,18 +56,22 @@ pub struct ApiResponse {
 
 impl std::fmt::Display for WorkflowRun {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let conclusion = self.conclusion.clone();
         let t = match self.status {
-            Status::Completed => "green",
+            Status::Completed => match conclusion.unwrap().as_str() {
+                "success" => "green",
+                _ => "red",
+            },
             Status::Failure => "red",
             _ => "yellow",
         };
         write!(
             f,
-            "{} {:<} {:<} {:<} ",
+            "{} {:<} {:<} {:<}",
             "●".color(t),
             self.created_at,
             self.id,
-            self.name
+            self.path.split("/").last().unwrap(),
         )
     }
 }
