@@ -7,7 +7,7 @@ mod gh;
 pub enum Command {
     Start(StartArgs),
     Ls,
-    Check(CheckArgs),
+    Clean,
 }
 
 #[derive(Parser, Debug)]
@@ -29,14 +29,6 @@ pub struct StartArgs {
         required = false
     )]
     field: Option<String>,
-}
-
-#[derive(Parser, Debug)]
-pub struct CheckArgs {
-    #[arg(short, help = "Poll output every 10s", long)]
-    watch: bool,
-    #[arg(short, help = "Notify once done", long)]
-    notify: bool,
 }
 
 fn parse(o: std::process::Output) -> String {
@@ -112,6 +104,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
             if res.status() != 204 {
                 return Err(format!("couldn't create workflow {}", res.status()).into());
             }
+            loop {
+                let res = client
+                    .get(format!(
+                        "{GH_BASE}/repos/{repo}/actions/runs?branch={}&per_page=1",
+                        b
+                    ))
+                    .send()
+                    .await?;
+                if let Some(run) = &res.json::<gh::ApiResponse>().await?.workflow_runs.pop() {
+                    match run.status {
+                        gh::Status::Completed | gh::Status::Failure => {
+                            println!("{run}");
+                            let _ = std::process::Command::new("afplay")
+                                .arg("/Users/qazal/sound.mp3")
+                                .output();
+                            break;
+                        }
+                        _ => {}
+                    };
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            }
         }
         Command::Ls => {
             let res = client
@@ -121,19 +135,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let data: gh::ApiResponse = res.json().await?;
             data.workflow_runs.iter().for_each(|wf| println!("{wf}"))
         }
-        Command::Check(_) => {
+        Command::Clean => {
             let res = client
-                .get(format!(
-                    "{GH_BASE}/repos/{repo}/actions/runs?branch={}&per_page=1",
-                    b
-                ))
+                .get(format!("{GH_BASE}/repos/{repo}/actions/runs?branch={}", b))
                 .send()
                 .await?;
-            let data: gh::ApiResponse = res.json().await?;
-            let run = &data.workflow_runs[0];
-            match run.status {
-                gh::Status::Queued => {}
-                _ => println!("{run}"),
+            let runs = res.json::<gh::ApiResponse>().await?.workflow_runs;
+            println!("cleaning {} runs", runs.len());
+            for r in runs.iter() {
+                let res = client
+                    .delete(format!("{GH_BASE}/repos/{repo}/actions/runs/{}", r.id))
+                    .send()
+                    .await?;
+                if res.status() != 204 {
+                    return Err(format!("couldn't delete run {} {}", r.id, res.status()).into());
+                }
             }
         }
     }

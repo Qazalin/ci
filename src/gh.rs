@@ -44,6 +44,8 @@ pub enum Status {
     Completed,
     Failure,
     Queued,
+    #[serde(rename = "in_progress")]
+    InProgress,
 }
 
 #[derive(Deserialize, Debug)]
@@ -55,10 +57,17 @@ pub struct ApiResponse {
 impl std::fmt::Display for WorkflowRun {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let t = match self.status {
-            Status::Completed => "".color("green"),
-            Status::Failure => "".color("red"),
-            Status::Queued => "".color("yellow"),
+            Status::Completed => "green",
+            Status::Failure => "red",
+            _ => "yellow",
         };
-        write!(f, "{}  {:<} {:<} ", t, self.id, self.name)
+        write!(
+            f,
+            "{} {:<} {:<} {:<} ",
+            "●".color(t),
+            self.created_at,
+            self.id,
+            self.name
+        )
     }
 }
