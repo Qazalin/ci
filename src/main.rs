@@ -101,10 +101,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .json(&serde_json::json!({"ref": b}))
                 .send()
                 .await?;
-            if res.status() != 204 {
+            if !res.status().is_success() {
                 return Err(format!("couldn't create workflow {}", res.status()).into());
             }
             loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
                 let res = client
                     .get(format!(
                         "{GH_BASE}/repos/{repo}/actions/runs?branch={}&per_page=1",
@@ -123,7 +124,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         }
                         _ => {}
                     };
-                    std::thread::sleep(std::time::Duration::from_secs(1));
                 }
             }
         }
@@ -143,11 +143,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let runs = res.json::<gh::ApiResponse>().await?.workflow_runs;
             println!("cleaning {} runs", runs.len());
             for r in runs.iter() {
-                let res = client
-                    .delete(format!("{GH_BASE}/repos/{repo}/actions/runs/{}", r.id))
-                    .send()
-                    .await?;
-                if res.status() != 204 {
+                let res = match r.status {
+                    gh::Status::InProgress => client.post(format!(
+                        "{GH_BASE}/repos/{repo}/actions/runs/{}/cancel",
+                        r.id
+                    )),
+                    _ => client.delete(format!("{GH_BASE}/repos/{repo}/actions/runs/{}", r.id)),
+                }
+                .send()
+                .await?;
+                if !res.status().is_success() {
                     return Err(format!("couldn't delete run {} {}", r.id, res.status()).into());
                 }
             }
