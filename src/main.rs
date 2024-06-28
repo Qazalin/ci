@@ -9,6 +9,7 @@ pub enum Command {
     Ls,
     Clean,
     Watch,
+    Open,
 }
 
 #[derive(Parser, Debug)]
@@ -139,6 +140,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .iter()
                 .filter(|wf| wf.path.ends_with(&workflow_id))
                 .for_each(|wf| println!("{wf}"));
+        }
+        Command::Open => {
+            let res = client
+                .get(format!(
+                    "{GH_BASE}/repos/{repo}/actions/runs?branch={}&per_page=1",
+                    b
+                ))
+                .send()
+                .await?;
+            let data: gh::ApiResponse = res.json().await?;
+            std::process::Command::new("open")
+                .arg(&data.workflow_runs[0].html_url)
+                .output()?;
         }
         Command::Clean => {
             let res = client
