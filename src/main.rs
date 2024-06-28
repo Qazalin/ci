@@ -106,31 +106,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             if !res.status().is_success() {
                 return Err(format!("couldn't create workflow {}", res.status()).into());
             }
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(1));
-                let res = client
-                    .get(format!(
-                        "{GH_BASE}/repos/{repo}/actions/runs?branch={}&per_page=1",
-                        b
-                    ))
-                    .send()
-                    .await?;
-                if let Some(run) = &res.json::<gh::ApiResponse>().await?.workflow_runs.pop() {
-                    match run.status {
-                        gh::Status::Completed | gh::Status::Failure => {
-                            println!("{run}");
-                            let _ = std::process::Command::new("afplay")
-                                .arg("/Users/qazal/sound.mp3")
-                                .output();
-                            break;
-                        }
-                        _ => {}
-                    };
-                }
-            }
         }
         Command::Watch => loop {
-            // TODO copied from START
             std::thread::sleep(std::time::Duration::from_secs(1));
             let res = client
                 .get(format!(
