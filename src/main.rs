@@ -10,6 +10,7 @@ pub enum Command {
     Clean,
     Watch,
     Open,
+    O,
 }
 
 #[derive(Parser, Debug)]
@@ -141,7 +142,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .filter(|wf| wf.path.ends_with(&workflow_id))
                 .for_each(|wf| println!("{wf}"));
         }
-        Command::Open => {
+        Command::Open | Command::O => {
             let res = client
                 .get(format!(
                     "{GH_BASE}/repos/{repo}/actions/runs?branch={}&per_page=1",
