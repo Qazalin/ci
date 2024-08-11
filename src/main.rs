@@ -112,13 +112,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Command::Watch => loop {
             std::thread::sleep(std::time::Duration::from_secs(1));
             let res = client
-                .get(format!(
-                    "{GH_BASE}/repos/{repo}/actions/runs?branch={}&per_page=1",
-                    b
-                ))
+                .get(format!("{GH_BASE}/repos/{repo}/actions/runs?branch={}", b))
                 .send()
                 .await?;
-            if let Some(run) = &res.json::<gh::ApiResponse>().await?.workflow_runs.pop() {
+            let data: gh::ApiResponse = res.json().await?;
+            let workflow_runs = data
+                .workflow_runs
+                .iter()
+                .filter(|wf| wf.path.ends_with(&workflow_id))
+                .collect::<Vec<_>>();
+            if workflow_runs.len() != 0 {
+                let run = workflow_runs[workflow_runs.len() - 1];
                 match run.status {
                     gh::Status::Completed | gh::Status::Failure => {
                         println!("{run}");
