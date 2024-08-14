@@ -71,7 +71,7 @@ impl std::fmt::Display for WorkflowRun {
             "●".color(t),
             self.created_at,
             self.id,
-            self.head_commit.message,
+            self.head_commit.message.lines().next().unwrap(),
             self.path.split("/").last().unwrap(),
         )
     }

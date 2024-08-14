@@ -122,7 +122,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .filter(|wf| wf.path.ends_with(&workflow_id))
                 .collect::<Vec<_>>();
             if workflow_runs.len() != 0 {
-                let run = workflow_runs[workflow_runs.len() - 1];
+                let run = workflow_runs[0];
                 match run.status {
                     gh::Status::Completed | gh::Status::Failure => {
                         println!("{run}");
