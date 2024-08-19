@@ -5,12 +5,15 @@ mod gh;
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    // real
     Start(StartArgs),
     Ls,
     Clean,
     Watch,
     Open,
+    // alias
     O,
+    W,
 }
 
 #[derive(Parser, Debug)]
@@ -109,7 +112,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 return Err(format!("couldn't create workflow {}", res.status()).into());
             }
         }
-        Command::Watch => loop {
+        Command::Watch | Command::W => loop {
             std::thread::sleep(std::time::Duration::from_secs(1));
             let res = client
                 .get(format!("{GH_BASE}/repos/{repo}/actions/runs?branch={}", b))
