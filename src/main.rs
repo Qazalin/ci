@@ -128,10 +128,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let run = workflow_runs[0];
                 match run.status {
                     gh::Status::Completed | gh::Status::Failure => {
-                        println!("{run}");
-                        let _ = std::process::Command::new("afplay")
-                            .arg("/Users/qazal/sound.mp3")
-                            .output();
+                        match std::env::var("HOME") {
+                            Ok(h) => {
+                                let _ = std::process::Command::new("afplay")
+                                    .arg(format!("{h}/sound.mp3"))
+                                    .output();
+                            }
+                            Err(_) => println!("can't get $HOME dir, skipping notification."),
+                        }
                         break;
                     }
                     _ => {}
