@@ -1,57 +1,37 @@
 #![allow(unused)]
 use colored::Colorize;
-use serde::Deserialize;
 
-#[derive(Deserialize, Debug)]
-pub struct HeadCommit {
-    pub id: String,
-    pub tree_id: String,
-    pub message: String,
-    pub timestamp: String,
-}
-
-#[derive(Deserialize, Debug)]
 pub struct WorkflowRun {
-    pub id: u64,
-    pub name: String,
-    pub head_branch: String,
-    pub head_sha: String,
-    pub path: String,
-    pub run_number: u64,
-    pub event: String,
-    pub display_title: String,
     pub status: Status,
     pub conclusion: Option<String>,
-    pub workflow_id: u64,
-    pub html_url: String,
     pub created_at: String,
-    pub updated_at: String,
-    pub run_attempt: u64,
-    pub run_started_at: String,
-    pub jobs_url: String,
-    pub logs_url: String,
-    pub check_suite_url: String,
-    pub artifacts_url: String,
-    pub cancel_url: String,
-    pub rerun_url: String,
-    pub workflow_url: String,
-    pub head_commit: HeadCommit,
+    pub id: u64,
+    pub commit_msg: String,
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "lowercase")]
+impl WorkflowRun {
+    pub fn new(raw: Vec<String>) -> Self {
+        Self {
+            status: match raw[0].as_str() {
+                "completed" => Status::Completed,
+                "failure" => Status::Failure,
+                _ => Status::InProgress,
+            },
+            conclusion: match raw[1].as_str() {
+                "null" => None,
+                v => Some(v.to_string()),
+            },
+            created_at: raw[2].clone(),
+            id: raw[3].parse().unwrap(),
+            commit_msg: raw[4].clone(),
+        }
+    }
+}
+
 pub enum Status {
     Completed,
     Failure,
-    Queued,
-    #[serde(rename = "in_progress")]
     InProgress,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct ApiResponse {
-    pub total_count: u64,
-    pub workflow_runs: Vec<WorkflowRun>,
 }
 
 impl std::fmt::Display for WorkflowRun {
@@ -67,12 +47,11 @@ impl std::fmt::Display for WorkflowRun {
         };
         write!(
             f,
-            "{} {:<} {:<} {:<} {:<}",
+            "{} {:<} {:<} {:<}",
             "●".color(t),
             self.created_at,
             self.id,
-            self.head_commit.message.lines().next().unwrap(),
-            self.path.split("/").last().unwrap(),
+            self.commit_msg.lines().next().unwrap(),
         )
     }
 }

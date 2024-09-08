@@ -1,68 +1,72 @@
-use clap::{command, Parser, Subcommand};
-use reqwest::header;
-use std::error::Error;
+use std::ffi::OsStr;
+use std::io::Read;
+use std::process::{Child, Command, Output, Stdio};
+
 mod gh;
 
-#[derive(Subcommand, Debug)]
-pub enum Command {
-    // real
-    Start(StartArgs),
-    Ls,
-    Clean,
-    Watch,
-    Open,
-    // alias
-    O,
-    W,
-}
-
-#[derive(Parser, Debug)]
-pub struct Cli {
-    #[command(subcommand)]
-    command: Command,
-    #[arg(short, help = "Target branch", long)]
-    branch: Option<String>,
-    #[arg(short, help = "The workflow .yml file", long)]
-    workflow_id: Option<String>,
-}
-
-#[derive(Parser, Debug)]
-pub struct StartArgs {
-    #[arg(
-        short,
-        help = "Add a string parameter in key=value format",
-        long,
-        required = false
-    )]
-    field: Option<String>,
-}
-
-fn parse(o: std::process::Output) -> String {
+fn parse(o: Output) -> String {
     std::str::from_utf8(&o.stdout).unwrap().trim().to_string()
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let args = Cli::parse();
-    let token = match std::env::var("GH_TOKEN").ok() {
-        Some(t) => t,
-        None => {
-            let output = std::process::Command::new("gh")
-                .arg("auth")
-                .arg("token")
-                .output();
-            parse(output.unwrap())
+struct GH {
+    token: String,
+}
+
+fn jq<S: AsRef<OsStr>>(child: Child, query: S) -> Result<String, std::io::Error> {
+    let jq_output = Command::new("jq")
+        .arg(query)
+        .stdin(child.stdout.unwrap())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let mut ret = String::new();
+    jq_output.stdout.unwrap().read_to_string(&mut ret)?;
+    Ok(ret)
+}
+
+impl GH {
+    fn new() -> Self {
+        Self {
+            token: match std::env::var("GH_TOKEN").ok() {
+                Some(t) => t,
+                None => parse(
+                    Command::new("gh")
+                        .arg("auth")
+                        .arg("token")
+                        .output()
+                        .unwrap(),
+                ),
+            },
         }
-    };
+    }
+
+    fn get<S: std::fmt::Display>(self, path: S) -> Result<String, std::io::Error> {
+        let curl = Command::new("curl")
+            .arg("-L")
+            .arg("-H")
+            .arg("Accept: application/vnd.github+json")
+            .arg("-H")
+            .arg(format!("Authorization: Bearer {}", self.token))
+            .arg("-H")
+            .arg("X-GitHub-Api-Version: 2022-11-28")
+            .arg(format!("https://api.github.com{path}"))
+            .stdout(Stdio::piped())
+            .spawn()?;
+        Ok(jq(curl, format!(".workflow_runs[] | select(.path | endswith(\"test.yml\")) | [.conclusion // \"N/A\", .status, .created_at, .id, (.head_commit.message | split(\"\\n\")[0]), .path] | @csv"))?)
+    }
+}
+
+fn main() -> Result<(), std::io::Error> {
     let repo = match std::env::var("REPO").ok() {
         Some(r) => r,
         None => {
-            let output = std::process::Command::new("git")
-                .arg("remote")
-                .arg("get-url")
-                .arg("origin")
-                .output();
-            let url = parse(output.unwrap());
+            let url = parse(
+                Command::new("git")
+                    .arg("remote")
+                    .arg("get-url")
+                    .arg("origin")
+                    .output()
+                    .unwrap(),
+            );
             match url.starts_with("git@") {
                 true => url
                     .split(":")
@@ -73,122 +77,29 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     };
-
-    let mut headers = header::HeaderMap::new();
-    headers.insert(header::USER_AGENT, header::HeaderValue::from_static("test"));
-    headers.insert(
-        header::ACCEPT,
-        header::HeaderValue::from_static("application/vnd.github.v3+json"),
+    let branch = parse(
+        Command::new("git")
+            .arg("rev-parse")
+            .arg("--abbrev-ref")
+            .arg("HEAD")
+            .output()?,
     );
-    headers.insert(
-        header::AUTHORIZATION,
-        header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
-    );
-    let client = reqwest::Client::builder()
-        .default_headers(headers)
-        .build()
-        .unwrap();
-    const GH_BASE: &str = "https://api.github.com";
-    let output = std::process::Command::new("git")
-        .arg("rev-parse")
-        .arg("--abbrev-ref")
-        .arg("HEAD")
-        .output()
-        .map_err(|e| e.to_string())?;
-    let curr_branch = std::str::from_utf8(&output.stdout)?.trim().to_string();
-    let b = args.branch.unwrap_or(curr_branch);
-    let workflow_id = args.workflow_id.unwrap_or("test.yml".to_string());
-    match args.command {
-        Command::Start(_) => {
-            let res = client
-                .post(format!(
-                    "{GH_BASE}/repos/{}/actions/workflows/{}/dispatches",
-                    repo, workflow_id
-                ))
-                .json(&serde_json::json!({"ref": b}))
-                .send()
-                .await?;
-            if !res.status().is_success() {
-                return Err(format!("couldn't create workflow {}", res.status()).into());
-            }
-        }
-        Command::Watch | Command::W => loop {
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            let res = client
-                .get(format!("{GH_BASE}/repos/{repo}/actions/runs?branch={}", b))
-                .send()
-                .await?;
-            let data: gh::ApiResponse = res.json().await?;
-            let workflow_runs = data
-                .workflow_runs
-                .iter()
-                .filter(|wf| wf.path.ends_with(&workflow_id))
-                .collect::<Vec<_>>();
-            if workflow_runs.len() != 0 {
-                let run = workflow_runs[0];
-                match run.status {
-                    gh::Status::Completed | gh::Status::Failure => {
-                        match std::env::var("HOME") {
-                            Ok(h) => {
-                                let _ = std::process::Command::new("afplay")
-                                    .arg(format!("{h}/sound.mp3"))
-                                    .output();
-                            }
-                            Err(_) => println!("can't get $HOME dir, skipping notification."),
-                        }
-                        break;
-                    }
-                    _ => {}
-                };
-            }
-        },
-        Command::Ls => {
-            let res = client
-                .get(format!("{GH_BASE}/repos/{repo}/actions/runs?branch={}", b))
-                .send()
-                .await?;
-            let data: gh::ApiResponse = res.json().await?;
-            data.workflow_runs
-                .iter()
-                .filter(|wf| wf.path.ends_with(&workflow_id))
-                .for_each(|wf| println!("{wf}"));
-        }
-        Command::Open | Command::O => {
-            let res = client
-                .get(format!(
-                    "{GH_BASE}/repos/{repo}/actions/runs?branch={}&per_page=1",
-                    b
-                ))
-                .send()
-                .await?;
-            let data: gh::ApiResponse = res.json().await?;
-            std::process::Command::new("open")
-                .arg(&data.workflow_runs[0].html_url)
-                .output()?;
-        }
-        Command::Clean => {
-            let res = client
-                .get(format!("{GH_BASE}/repos/{repo}/actions/runs?branch={}", b))
-                .send()
-                .await?;
-            let runs = res.json::<gh::ApiResponse>().await?.workflow_runs;
-            println!("cleaning {} runs", runs.len());
-            for r in runs.iter() {
-                let res = match r.status {
-                    gh::Status::InProgress => client.post(format!(
-                        "{GH_BASE}/repos/{repo}/actions/runs/{}/cancel",
-                        r.id
-                    )),
-                    _ => client.delete(format!("{GH_BASE}/repos/{repo}/actions/runs/{}", r.id)),
-                }
-                .send()
-                .await?;
-                if !res.status().is_success() {
-                    return Err(format!("couldn't delete run {} {}", r.id, res.status()).into());
-                }
-            }
-        }
-    }
 
+    // temp
+    let repo = "tinygrad/tinygrad";
+    let branch = "master";
+
+    let gh = GH::new();
+    let ret = gh.get(&format!("/repos/{repo}/actions/runs?branch={branch}").as_str())?;
+    ret.lines().for_each(|x| {
+        // (status, conclusion, date, run_id, commit_msg)
+        let parts = x
+            .split(",")
+            .take(5)
+            .map(|x| x.replace('"', "").replace("\\", ""))
+            .collect::<Vec<_>>();
+        let wf = gh::WorkflowRun::new(parts);
+        println!("{wf}");
+    });
     Ok(())
 }
