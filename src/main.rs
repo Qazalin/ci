@@ -12,6 +12,7 @@ pub enum Command {
     Watch,
     Open,
     // alias
+    S,
     O,
     W,
 }
@@ -95,11 +96,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .arg("HEAD")
         .output()
         .map_err(|e| e.to_string())?;
-    let curr_branch = std::str::from_utf8(&output.stdout)?.trim().to_string();
-    let b = args.branch.unwrap_or(curr_branch);
+    let b = args.branch.unwrap_or(parse(output));
     let workflow_id = args.workflow_id.unwrap_or("test.yml".to_string());
     match args.command {
-        Command::Start(_) => {
+        Command::Start(_) | Command::S => {
             let res = client
                 .post(format!(
                     "{GH_BASE}/repos/{}/actions/workflows/{}/dispatches",
