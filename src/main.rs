@@ -6,14 +6,14 @@ mod gh;
 #[derive(Subcommand, Debug)]
 pub enum Command {
     // real
-    Start(StartArgs),
+    Start,
     Ls,
     Clean,
     Watch,
-    Open,
+    Open(OpenArgs),
     // alias
     S,
-    O,
+    O(OpenArgs),
     W,
 }
 
@@ -28,14 +28,9 @@ pub struct Cli {
 }
 
 #[derive(Parser, Debug)]
-pub struct StartArgs {
-    #[arg(
-        short,
-        help = "Add a string parameter in key=value format",
-        long,
-        required = false
-    )]
-    field: Option<String>,
+pub struct OpenArgs {
+    #[arg(short, help = "the run_id", long, required = false)]
+    run_id: Option<String>,
 }
 
 fn parse(o: std::process::Output) -> String {
@@ -99,7 +94,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let b = args.branch.unwrap_or(parse(output));
     let workflow_id = args.workflow_id.unwrap_or("test.yml".to_string());
     match args.command {
-        Command::Start(_) | Command::S => {
+        Command::Start | Command::S => {
             let res = client
                 .post(format!(
                     "{GH_BASE}/repos/{}/actions/workflows/{}/dispatches",
@@ -153,18 +148,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .filter(|wf| wf.path.ends_with(&workflow_id))
                 .for_each(|wf| println!("{wf}"));
         }
-        Command::Open | Command::O => {
-            let res = client
-                .get(format!(
-                    "{GH_BASE}/repos/{repo}/actions/runs?branch={}&per_page=1",
-                    b
-                ))
-                .send()
-                .await?;
-            let data: gh::ApiResponse = res.json().await?;
-            std::process::Command::new("open")
-                .arg(&data.workflow_runs[0].html_url)
-                .output()?;
+        Command::Open(args) | Command::O(args) => {
+            let url = match args.run_id {
+                Some(run_id) => {
+                    format!("https://github.com/tinygrad/tinygrad/actions/runs/{run_id}")
+                }
+                None => {
+                    let res = client
+                        .get(format!(
+                            "{GH_BASE}/repos/{repo}/actions/runs?branch={}&per_page=1",
+                            b
+                        ))
+                        .send()
+                        .await?;
+                    let data: gh::ApiResponse = res.json().await?;
+                    data.workflow_runs[0].html_url.clone()
+                }
+            };
+            std::process::Command::new("open").arg(url).output()?;
         }
         Command::Clean => {
             let res = client
