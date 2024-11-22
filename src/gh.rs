@@ -38,20 +38,40 @@ pub struct WorkflowRun {
     pub head_commit: HeadCommit,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     Completed,
     Failure,
     Queued,
+    Pending,
     #[serde(rename = "in_progress")]
     InProgress,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct ApiResponse {
+pub struct RunsApiResponse {
     pub total_count: u64,
     pub workflow_runs: Vec<WorkflowRun>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct JobsApiResponse {
+    pub jobs: Vec<Job>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Step {
+    pub name: String,
+    pub status: Status,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Job {
+    pub id: usize,
+    pub status: Status,
+    pub name: String,
+    pub steps: Vec<Step>,
 }
 
 impl std::fmt::Display for WorkflowRun {

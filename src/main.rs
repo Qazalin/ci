@@ -1,7 +1,8 @@
 use clap::{command, Parser, Subcommand};
 use reqwest::header;
-use std::error::Error;
+use std::{error::Error, io::Write};
 mod gh;
+use gh::{JobsApiResponse, RunsApiResponse, Status};
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
@@ -113,7 +114,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .get(format!("{GH_BASE}/repos/{repo}/actions/runs?branch={}", b))
                 .send()
                 .await?;
-            let data: gh::ApiResponse = res.json().await?;
+            let data: RunsApiResponse = res.json().await?;
             let workflow_runs = data
                 .workflow_runs
                 .iter()
@@ -121,6 +122,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .collect::<Vec<_>>();
             if workflow_runs.len() != 0 {
                 let run = workflow_runs[0];
+                let res = client.get(&data.workflow_runs[0].jobs_url).send().await?;
+                let jobs = res.json::<JobsApiResponse>().await?.jobs;
+                let done = jobs
+                    .iter()
+                    .filter(|x| x.status == Status::Completed || x.status == Status::Failure)
+                    .count();
+                print!("\r{done} completed / {} left", jobs.len() - done);
+                std::io::stdout().flush().unwrap();
                 match run.status {
                     gh::Status::Completed | gh::Status::Failure => {
                         match std::env::var("HOME") {
@@ -142,7 +151,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .get(format!("{GH_BASE}/repos/{repo}/actions/runs?branch={}", b))
                 .send()
                 .await?;
-            let data: gh::ApiResponse = res.json().await?;
+            let data: RunsApiResponse = res.json().await?;
             data.workflow_runs
                 .iter()
                 .filter(|wf| wf.path.ends_with(&workflow_id))
@@ -161,7 +170,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         ))
                         .send()
                         .await?;
-                    let data: gh::ApiResponse = res.json().await?;
+                    let data = res.json::<RunsApiResponse>().await?;
                     data.workflow_runs[0].html_url.clone()
                 }
             };
@@ -172,7 +181,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .get(format!("{GH_BASE}/repos/{repo}/actions/runs?branch={}", b))
                 .send()
                 .await?;
-            let runs = res.json::<gh::ApiResponse>().await?.workflow_runs;
+            let runs = res.json::<RunsApiResponse>().await?.workflow_runs;
             println!("cleaning {} runs", runs.len());
             for r in runs.iter() {
                 let res = match r.status {
