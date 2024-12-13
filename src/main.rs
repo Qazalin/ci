@@ -1,8 +1,8 @@
 use clap::{command, Parser, Subcommand};
 use reqwest::header;
-use std::{error::Error, io::Write};
+use std::error::Error;
 mod gh;
-use gh::{JobsApiResponse, RunsApiResponse, Status};
+use gh::RunsApiResponse;
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
@@ -121,16 +121,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .filter(|wf| wf.path.ends_with(&workflow_id))
                 .collect::<Vec<_>>();
             if workflow_runs.len() != 0 {
-                let run = workflow_runs[0];
-                let res = client.get(&data.workflow_runs[0].jobs_url).send().await?;
-                let jobs = res.json::<JobsApiResponse>().await?.jobs;
-                let done = jobs
-                    .iter()
-                    .filter(|x| x.status == Status::Completed || x.status == Status::Failure)
-                    .count();
-                print!("\r{done} completed / {} left", jobs.len() - done);
-                std::io::stdout().flush().unwrap();
-                match run.status {
+                match workflow_runs[0].status {
                     gh::Status::Completed | gh::Status::Failure => {
                         match std::env::var("HOME") {
                             Ok(h) => {

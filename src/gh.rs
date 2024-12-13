@@ -55,25 +55,6 @@ pub struct RunsApiResponse {
     pub workflow_runs: Vec<WorkflowRun>,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct JobsApiResponse {
-    pub jobs: Vec<Job>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Step {
-    pub name: String,
-    pub status: Status,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Job {
-    pub id: usize,
-    pub status: Status,
-    pub name: String,
-    pub steps: Vec<Step>,
-}
-
 impl std::fmt::Display for WorkflowRun {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let conclusion = self.conclusion.clone();
